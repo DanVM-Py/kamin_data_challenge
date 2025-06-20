@@ -1,5 +1,5 @@
 import pandas as pd
-from config import PATH_BASE
+from config import BASE_PATH
 
 
 def load_csv(file_name: str) -> pd.DataFrame:
@@ -9,7 +9,7 @@ def load_csv(file_name: str) -> pd.DataFrame:
     - Handles read and parse errors
     - Reports upload summary
     """
-    path = PATH_BASE / file_name
+    path = BASE_PATH / file_name
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     try:
