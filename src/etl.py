@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 
-def load_csv(file_name: str, base_path: str) -> pd.DataFrame:
+def load_csv(file_name: str, base_path: Path) -> pd.DataFrame:
     """
     Upload a CSV from the Google Drive path
     - Verifies file existence
