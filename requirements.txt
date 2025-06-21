@@ -1,3 +1,23 @@
-pandas
-numpy
-python-dateutil
+# Core data analysis
+pandas>=1.5.0
+numpy>=1.21.0
+python-dateutil>=2.8.0
+
+# Data visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+
+# Jupyter and interactive development
+jupyter>=1.0.0
+jupyterlab>=3.4.0
+ipywidgets>=7.6.0
+
+# Data processing utilities
+scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# Development tools
+black
+flake8
+pytest

@@ -200,7 +200,7 @@ def normalize_events_metadata(df_events: pd.DataFrame) -> pd.DataFrame:
     mask_currency = df['currency'].str.len() != 3
     n_bad_currency = mask_currency.sum()
     df.loc[mask_currency, 'currency'] = 'XXX'
-    print(f"[Metadata] events: {n_bad_currency}/{total} invalid currency codes set to XXX")
+    print(f"[Metadata] events: {n_bad_currency}/{total} invalid currency codes set to 'XXX'")
 
     # 5) Normalize status
     allowed_status = {'created','processing','completed','failed'}
@@ -236,45 +236,74 @@ def normalize_events_metadata(df_events: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def normalize_retries_metadata(df_retries: pd.DataFrame) -> pd.DataFrame:
+def normalize_retry_logs_metadata(df_retry_logs: pd.DataFrame) -> pd.DataFrame:
     """
     Purpose:
-      -> Clean and standardize retry_logs metadata fields:
+      -> Clean and standardize retry logs metadata fields:
          1. Drop rows missing critical keys (retry_id, original_event_id, retry_time)
-         2. 'original_event_id': cast to string and strip whitespace
-         3. 'retry_attempt': cast to integer and drop if invalid or negative
-         4. 'retry_status': normalize to {'success', 'failed'}, flag unknowns
+         2. 'retry_id' & 'original_event_id': validate UUID format
+         3. 'retry_attempt': validate integer in range 1-3
+         4. 'retry_status': normalize to {'success','failed'}, flag others as 'unknown'
+         5. 'retry_time': ensure proper datetime format
     Next Features:
-      -> Track retry gaps or unreasonable retry intervals
-      -> Enrich with timing deltas from event creation
+      -> Validate retry_attempt sequences (should be consecutive 1,2,3 for same event)
+      -> Cross-reference original_event_id with events table for consistency
     """
-    df = df_retries.copy()
+    import uuid
+    
+    df = df_retry_logs.copy()
     total = len(df)
 
     # 1) Drop rows missing critical keys
     df = df.dropna(subset=['retry_id', 'original_event_id', 'retry_time'])
-    print(f"[Metadata] retries: {total} → {len(df)} after dropping missing keys")
+    print(f"[Metadata] retry_logs: {total} → {len(df)} after dropping missing keys")
 
-    # 2) Normalize original_event_id
-    df['original_event_id'] = df['original_event_id'].astype(str).str.strip()
+    # 2) Validate UUID format for retry_id and original_event_id
+    def is_valid_uuid(value):
+        try:
+            uuid.UUID(str(value))
+            return True
+        except (ValueError, TypeError):
+            return False
 
-    # 3) Normalize retry_attempt
+    # Check retry_id
+    invalid_retry_id = ~df['retry_id'].apply(is_valid_uuid)
+    n_invalid_retry_id = invalid_retry_id.sum()
+    if n_invalid_retry_id > 0:
+        print(f"[Metadata] retry_logs: {n_invalid_retry_id}/{len(df)} invalid retry_id format")
+        # Drop rows with invalid UUIDs
+        df = df[~invalid_retry_id]
+
+    # Check original_event_id
+    invalid_event_id = ~df['original_event_id'].apply(is_valid_uuid)
+    n_invalid_event_id = invalid_event_id.sum()
+    if n_invalid_event_id > 0:
+        print(f"[Metadata] retry_logs: {n_invalid_event_id}/{len(df)} invalid original_event_id format")
+        # Drop rows with invalid UUIDs
+        df = df[~invalid_event_id]
+
+    # 3) Validate retry_attempt range (1-3)
     df['retry_attempt'] = pd.to_numeric(df['retry_attempt'], errors='coerce')
-    invalid_retry = (~df['retry_attempt'].apply(lambda x: isinstance(x, (int, float))) | (df['retry_attempt'] < 0)).sum()
-    df = df[df['retry_attempt'] >= 0]
-    df['retry_attempt'] = df['retry_attempt'].astype(int)
-    print(f"[Metadata] retries: {invalid_retry} rows removed with invalid retry_attempt")
+    invalid_attempt = ~df['retry_attempt'].isin([1, 2, 3])
+    n_invalid_attempt = invalid_attempt.sum()
+    if n_invalid_attempt > 0:
+        print(f"[Metadata] retry_logs: {n_invalid_attempt}/{len(df)} invalid retry_attempt (not 1-3)")
+        # Drop rows with invalid attempts
+        df = df[~invalid_attempt]
 
     # 4) Normalize retry_status
-    allowed_status = {'success', 'failed'}
     df['retry_status'] = (
         df['retry_status']
         .astype(str)
         .str.lower()
         .str.strip()
-        .where(lambda s: s.isin(allowed_status), other='unknown')
+        .where(lambda s: s.isin(['success', 'failed']), other='unknown')
     )
-    unknown_status = (df['retry_status'] == 'unknown').sum()
-    print(f"[Metadata] retries: {unknown_status}/{len(df)} unknown retry_status")
+    mask_status = df['retry_status'] == 'unknown'
+    n_bad_status = mask_status.sum()
+    print(f"[Metadata] retry_logs: {n_bad_status}/{len(df)} invalid status set to 'unknown'")
+
+    # 5) Ensure retry_time is string format for consistency
+    df['retry_time'] = df['retry_time'].astype(str).str.strip()
 
     return df
