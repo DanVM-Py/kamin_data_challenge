@@ -1,15 +1,15 @@
 import pandas as pd
-from config import BASE_PATH
+from pathlib import Path
 
 
-def load_csv(file_name: str) -> pd.DataFrame:
+def load_csv(file_name: str, base_path: str) -> pd.DataFrame:
     """
     Upload a CSV from the Google Drive path
     - Verifies file existence
     - Handles read and parse errors
     - Reports upload summary
     """
-    path = BASE_PATH / file_name
+    path = base_path / file_name
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     try:
@@ -27,7 +27,6 @@ def load_csv(file_name: str) -> pd.DataFrame:
         raise
 
 
-# 2.1.1 Standardize timestamps  
 def standardize_dates(df, columns, df_name):
     """
     Purpose:
