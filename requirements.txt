@@ -21,3 +21,6 @@ scipy>=1.7.0
 black
 flake8
 pytest
+
+# SQL Analytics
+duckdb>=0.9.0

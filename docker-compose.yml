@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   kamin-jupyter:
     build:
@@ -7,13 +5,14 @@ services:
       dockerfile: Dockerfile
     container_name: kamin_data_challenge
     ports:
-      - "8888:8888"
+      - "8889:8888"
     volumes:
       # Montar el código fuente para desarrollo en tiempo real
       - ./src:/app/src
       - ./notebooks:/app/notebooks
       - ./data:/app/data
-      # Persistir configuración de Jupyter
+      - ./queries:/app/queries
+      # Usar volumen local para configuración de Jupyter
       - jupyter_config:/home/kamin/.jupyter
     environment:
       - JUPYTER_ENABLE_LAB=yes
@@ -22,16 +21,17 @@ services:
     working_dir: /app
     command: >
       sh -c "
-        echo '🚀 Iniciando Kamin Data Challenge Container...' &&
-        echo '📊 Jupyter Lab disponible en: http://localhost:8888' &&
+        echo '🚀 Iniciando Kamin Data Challenge Container (Puerto 8889)...' &&
+        echo '📊 Jupyter Lab disponible en: http://localhost:8889' &&
         echo '📁 Directorios montados:' &&
         echo '   - ./src -> /app/src' &&
         echo '   - ./notebooks -> /app/notebooks' &&
         echo '   - ./data -> /app/data' &&
+        echo '   - ./queries -> /app/queries' &&
         echo '✨ ¡Listo para trabajar!' &&
-        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token= --NotebookApp.password= --ServerApp.allow_remote_access=True
       "
-    restart: unless-stopped
+    restart: "no"
     
   # Servicio opcional para desarrollo con shell interactivo
   kamin-dev:
@@ -43,6 +43,7 @@ services:
       - ./src:/app/src
       - ./notebooks:/app/notebooks
       - ./data:/app/data
+      - ./queries:/app/queries
     working_dir: /app
     command: tail -f /dev/null
     profiles:

@@ -58,6 +58,8 @@ RUN pip install --upgrade pip setuptools wheel && \
     # Additional utilities found in codebase
     pip install pathlib2 && \
     pip install uuid && \
+    # SQL Analytics
+    pip install duckdb>=0.9.0 &&  \
     # IDE integration tools
     pip install ipykernel && \
     pip install ipython && \
@@ -67,14 +69,12 @@ RUN pip install --upgrade pip setuptools wheel && \
 # Copiar el código del proyecto
 COPY . .
 
-# Cambiar permisos al usuario kamin
-RUN chown -R kamin:kamin /app
+# Crear y configurar directorios con permisos correctos
+RUN mkdir -p /home/kamin/.jupyter /app/notebooks /app/data/processed /app/data/raw /app/src && \
+    chown -R kamin:kamin /app /home/kamin/.jupyter
 
 # Cambiar a usuario no-root
 USER kamin
-
-# Crear directorios necesarios
-RUN mkdir -p /app/notebooks /app/data/processed /app/data/raw /app/src
 
 # Configurar Python path para imports
 ENV PYTHONPATH="${PYTHONPATH}:/app/src:/app"
@@ -85,5 +85,5 @@ RUN python -m ipykernel install --user --name=kamin --display-name="Kamin Data C
 # Exponer puerto para Jupyter
 EXPOSE 8888
 
-# Comando por defecto: iniciar Jupyter Lab con configuración para IDE
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=''", "--NotebookApp.password=''", "--ServerApp.allow_remote_access=True"]
+# Comando por defecto: iniciar Jupyter Lab con configuración simplificada
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=", "--NotebookApp.password=", "--ServerApp.allow_remote_access=True"]
