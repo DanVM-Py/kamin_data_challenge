@@ -100,7 +100,7 @@ start_jupyter() {
             
             echo ""
             echo -e "${GREEN}🎉 ¡Jupyter Lab iniciado exitosamente!${NC}"
-            echo -e "${YELLOW}📊 Disponible en: http://localhost:8888${NC}"
+            echo -e "${YELLOW}📊 Disponible en: http://localhost:8889${NC}"
             echo ""
             echo -e "${BLUE}💡 Comandos útiles:${NC}"
             echo "   Ver logs:     $COMPOSE_CMD logs -f kamin-jupyter"

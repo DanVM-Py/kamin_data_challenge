@@ -1,3 +1,60 @@
+WITH EVENTS_AGG AS (
+    SELECT 
+        E.CLIENT_ID,
+        COUNT(E.EVENT_ID) as TOTAL_EVENTS,
+        SUM(E.AMOUNT) as TOTAL_VOLUME,
+        AVG(E.AMOUNT) as AVG_TRANSACTION_AMOUNT,
+        
+        -- Status counts
+        SUM(CASE WHEN E.STATUS = 'completed' THEN 1 ELSE 0 END) as COMPLETED_EVENTS,
+        SUM(CASE WHEN E.STATUS = 'failed' THEN 1 ELSE 0 END) as FAILED_EVENTS,
+        SUM(CASE WHEN E.STATUS = 'processing' THEN 1 ELSE 0 END) as PROCESSING_EVENTS,
+        SUM(CASE WHEN E.STATUS = 'created' THEN 1 ELSE 0 END) as CREATED_EVENTS,
+        
+        -- Pay-in/out ratios
+        ROUND(
+            SUM(CASE WHEN E.TYPE = 'pay_in' THEN 1 ELSE 0 END) * 100.0 / 
+            NULLIF(COUNT(E.EVENT_ID), 0), 2
+        ) as PAY_IN_RATIO,
+        
+        ROUND(
+            SUM(CASE WHEN E.TYPE = 'pay_out' THEN 1 ELSE 0 END) * 100.0 / 
+            NULLIF(COUNT(E.EVENT_ID), 0), 2
+        ) as PAY_OUT_RATIO,
+
+        -- Fail rate
+        ROUND(
+            SUM(CASE WHEN E.STATUS = 'failed' THEN 1 ELSE 0 END) * 100.0 / 
+            NULLIF(COUNT(E.EVENT_ID), 0), 2
+        ) as FAIL_RATE,
+        
+        -- AVG Delay
+        ROUND(
+            AVG(
+                CASE 
+                    WHEN E.COMPLETED_AT IS NOT NULL AND E.CREATED_AT IS NOT NULL 
+                    THEN EXTRACT(EPOCH FROM (CAST(E.COMPLETED_AT AS TIMESTAMP) - CAST(E.CREATED_AT AS TIMESTAMP))) / 3600.0
+                    ELSE NULL 
+                END
+            ), 2
+        ) AS AVG_DELAY_HOURS
+        
+    FROM EVENTS AS E
+    GROUP BY E.CLIENT_ID
+),
+RETRY_AGG AS (
+    -- Agregamos retries por separado para evitar multiplicación
+    SELECT 
+        E.CLIENT_ID,
+        COUNT(R.RETRY_ID) as TOTAL_RETRIES,
+        SUM(CASE WHEN R.RETRY_STATUS = 'success' THEN 1 ELSE 0 END) as SUCCESSFUL_RETRIES,
+        SUM(CASE WHEN R.RETRY_STATUS = 'failed' THEN 1 ELSE 0 END) as FAILED_RETRIES,
+        COUNT(DISTINCT R.ORIGINAL_EVENT_ID) as EVENTS_WITH_RETRIES
+    FROM EVENTS AS E
+    INNER JOIN RETRY_LOGS AS R 
+        ON E.EVENT_ID = R.ORIGINAL_EVENT_ID
+    GROUP BY E.CLIENT_ID
+)
 SELECT 
     -- Client metadata
     C.CLIENT_ID,
@@ -6,75 +63,37 @@ SELECT
     C.CONTRACT_TIER,
     C.SIGN_UP_DATE,
     
-    -- Basic event metrics
-    COUNT(E.EVENT_ID) as TOTAL_EVENTS,
-    SUM(E.AMOUNT) as TOTAL_VOLUME,
-    AVG(E.AMOUNT) as AVG_TRANSACTION_AMOUNT,
+    -- Event metrics
+    COALESCE(EA.TOTAL_EVENTS, 0) as TOTAL_EVENTS,
+    COALESCE(EA.TOTAL_VOLUME, 0) as TOTAL_VOLUME,
+    COALESCE(EA.AVG_TRANSACTION_AMOUNT, 0) as AVG_TRANSACTION_AMOUNT,
     
     -- Status counts
-    SUM(CASE WHEN E.STATUS = 'completed' THEN 1 ELSE 0 END) as COMPLETED_EVENTS,
-    SUM(CASE WHEN E.STATUS = 'failed' THEN 1 ELSE 0 END) as FAILED_EVENTS,
-    SUM(CASE WHEN E.STATUS = 'processing' THEN 1 ELSE 0 END) as PROCESSING_EVENTS,
+    COALESCE(EA.COMPLETED_EVENTS, 0) as COMPLETED_EVENTS,
+    COALESCE(EA.FAILED_EVENTS, 0) as FAILED_EVENTS,
+    COALESCE(EA.PROCESSING_EVENTS, 0) as PROCESSING_EVENTS,
+    COALESCE(EA.CREATED_EVENTS, 0) as CREATED_EVENTS,
     
     -- Retry metrics
-    COUNT(R.RETRY_ID) as TOTAL_RETRIES,
-    SUM(CASE WHEN R.RETRY_STATUS = 'success' THEN 1 ELSE 0 END) as SUCCESSFUL_RETRIES,
+    COALESCE(RA.TOTAL_RETRIES, 0) as TOTAL_RETRIES,
+    COALESCE(RA.SUCCESSFUL_RETRIES, 0) as SUCCESSFUL_RETRIES,
+    COALESCE(RA.FAILED_RETRIES, 0) as FAILED_RETRIES,
     
-    -- Pay-in ratio
-    ROUND(
-        SUM(
-            CASE WHEN E.TYPE = 'pay_in' THEN 1 ELSE 0 END
-        ) * 100.0 / 
-        NULLIF(COUNT(E.EVENT_ID), 0), 
-        2
-    ) as PAY_IN_RATIO,
+    -- Ratios
+    COALESCE(EA.PAY_IN_RATIO, 0) as PAY_IN_RATIO,
+    COALESCE(EA.PAY_OUT_RATIO, 0) as PAY_OUT_RATIO,
+    COALESCE(EA.FAIL_RATE, 0) as FAIL_RATE,
+    COALESCE(EA.AVG_DELAY_HOURS, 0) AS AVG_DELAY_HOURS,
     
-    -- Pay-out ratio
+    -- Retry rate corregido
     ROUND(
-        SUM(
-            CASE WHEN E.TYPE = 'pay_out' THEN 1 ELSE 0 END
-        ) * 100.0 / 
-        NULLIF(COUNT(E.EVENT_ID), 0), 
-        2
-    ) as PAY_OUT_RATIO,
-
-    -- Fail rate
-    ROUND(
-        SUM(
-            CASE WHEN E.STATUS = 'failed' THEN 1 ELSE 0 END
-        ) * 100.0 / 
-        NULLIF(COUNT(E.EVENT_ID), 0), 
-        2
-    ) as FAIL_RATE,
-    
-    -- AVG Delay
-    ROUND(
-        AVG(
-            CASE 
-                WHEN E.COMPLETED_AT IS NOT NULL AND E.CREATED_AT IS NOT NULL 
-                THEN EXTRACT(EPOCH FROM (CAST(E.COMPLETED_AT AS TIMESTAMP) - CAST(E.CREATED_AT AS TIMESTAMP))) / 3600.0
-                ELSE NULL 
-            END
-        ), 
-        2
-    ) AS AVG_DELAY_HOURS,
-    
-    -- Retry rate (% of events that had retries)
-    ROUND(
-        COUNT(DISTINCT R.ORIGINAL_EVENT_ID) * 100.0 / 
-        NULLIF(COUNT(E.EVENT_ID), 0), 
-        2
+        COALESCE(RA.EVENTS_WITH_RETRIES, 0) * 100.0 / 
+        NULLIF(COALESCE(EA.TOTAL_EVENTS, 0), 0), 2
     ) AS RETRY_RATE
 
 FROM CLIENTS AS C
-LEFT JOIN EVENTS AS E
-  ON C.CLIENT_ID = E.CLIENT_ID
-LEFT JOIN RETRY_LOGS AS R
-  ON E.EVENT_ID = R.ORIGINAL_EVENT_ID
-GROUP BY
-  C.CLIENT_ID
-  , C.CLIENT_NAME
-  , C.SECTOR
-  , C.CONTRACT_TIER
-  , C.SIGN_UP_DATE
-ORDER BY TOTAL_VOLUME DESC NULLS LAST
+LEFT JOIN EVENTS_AGG AS EA
+    ON C.CLIENT_ID = EA.CLIENT_ID
+LEFT JOIN RETRY_AGG AS RA
+    ON C.CLIENT_ID = RA.CLIENT_ID
+ORDER BY COALESCE(EA.TOTAL_VOLUME, 0) DESC NULLS LAST
